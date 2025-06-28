@@ -54,5 +54,8 @@
       "lastName": "Last9",
       "email": "user9@example.com"
     }
-  ]
+  ],
+  "currentUser": {
+    "error": "Missing timestamp"
+  }
 }
