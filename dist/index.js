@@ -2,8 +2,9 @@ import fs from 'fs';
 import fetchBase from 'node-fetch';
 import fetchCookie from 'fetch-cookie';
 import { CookieJar } from 'tough-cookie';
+import FileCookieStore from 'tough-cookie-file-store';
 import crypto from 'crypto';
-const jar = new CookieJar();
+const jar = new CookieJar(new FileCookieStore('./cookies.json'));
 const fetch = fetchCookie(fetchBase, jar);
 const LOGIN_URL = 'https://challenge.sunvoy.com/login';
 const USERS_API = 'https://challenge.sunvoy.com/api/users';
@@ -13,7 +14,6 @@ const CREDENTIALS = {
     username: 'demo@example.org',
     password: 'test',
 };
-// ✅ Generates timestamp, sorted payload, HMAC checkcode
 function createSignedRequest(data) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const payload = {
@@ -30,7 +30,6 @@ function createSignedRequest(data) {
     const fullPayload = `${sortedString}&checkcode=${checkcode}`;
     return { fullPayload, timestamp };
 }
-// ✅ Extracts tokens like access_token, userId, etc. from hidden inputs
 function extractHiddenInputs(html) {
     const tokens = {};
     const inputRegex = /<input[^>]+id="([^"]+)"[^>]+value="([^"]+)"[^>]*>/g;
@@ -41,7 +40,6 @@ function extractHiddenInputs(html) {
     }
     return tokens;
 }
-// ✅ Retrieves nonce required for login
 async function fetchNonce() {
     const res = await fetch(LOGIN_URL);
     const html = await res.text();
@@ -50,7 +48,6 @@ async function fetchNonce() {
         throw new Error('Nonce not found');
     return match[1];
 }
-// ✅ Logs into the app and syncs cookies to API domain
 async function login() {
     const nonce = await fetchNonce();
     const form = new URLSearchParams({
@@ -74,22 +71,20 @@ async function login() {
             await jar.setCookie(clone.toString(), 'https://api.challenge.sunvoy.com');
         }
     }
-    console.log('✅ Login successful and cookies forwarded to API domain.');
+    console.log(' Login successful and cookies forwarded to API domain.');
 }
-// ✅ Fetches all users
 async function fetchUsers() {
     const res = await fetch(USERS_API, { method: 'POST' });
     if (!res.ok)
         throw new Error(`Failed to fetch users: ${res.status}`);
     const data = (await res.json());
-    console.log(`📦 Users fetched: ${data.length}`);
+    console.log(` Users fetched: ${data.length}`);
     return data;
 }
-// ✅ Fetches current user using signed payload
 async function fetchCurrentUser() {
     const html = await fetch(TOKENS_PAGE).then(res => res.text());
     const tokens = extractHiddenInputs(html);
-    console.log('🧩 Extracted tokens:', tokens);
+    console.log('Extracted tokens:', tokens);
     if (!tokens.access_token || !tokens.userId || !tokens.operateId) {
         throw new Error('Missing one or more required tokens.');
     }
@@ -118,10 +113,20 @@ async function fetchCurrentUser() {
         throw new Error(`Failed to fetch current user: ${res.status}`);
     }
 }
-// ✅ Main function orchestrates login, user fetching, and writes to file
+async function isLoggedIn() {
+    const res = await fetch(TOKENS_PAGE, { redirect: 'manual' });
+    return res.status === 200;
+}
 async function main() {
     try {
-        await login();
+        const loggedIn = await isLoggedIn();
+        if (!loggedIn) {
+            console.log('🔐 Session not valid. Logging in...');
+            await login();
+        }
+        else {
+            console.log('✅ Already logged in. Reusing session.');
+        }
         const users = await fetchUsers();
         const currentUser = await fetchCurrentUser();
         const result = {

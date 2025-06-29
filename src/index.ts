@@ -2,9 +2,10 @@ import fs from 'fs';
 import fetchBase from 'node-fetch';
 import fetchCookie from 'fetch-cookie';
 import { CookieJar } from 'tough-cookie';
+import FileCookieStore from 'tough-cookie-file-store';
 import crypto from 'crypto';
 
-const jar = new CookieJar();
+const jar = new CookieJar(new FileCookieStore('./cookies.json'));
 const fetch = fetchCookie(fetchBase, jar);
 
 const LOGIN_URL = 'https://challenge.sunvoy.com/login';
@@ -131,18 +132,30 @@ async function fetchCurrentUser(): Promise<any> {
 
   try {
     const json = JSON.parse(text);
-    console.log('👤 Current user fetched successfully!');
+    console.log(' Current user fetched successfully!');
     return json;
   } catch {
-    console.error('❌ Response Body:', text);
+    console.error(' Response Body:', text);
     throw new Error(`Failed to fetch current user: ${res.status}`);
   }
 }
 
 
+async function isLoggedIn(): Promise<boolean> {
+  const res = await fetch(TOKENS_PAGE, { redirect: 'manual' });
+  return res.status === 200;
+}
+
 async function main() {
   try {
-    await login();
+    const loggedIn = await isLoggedIn();
+    if (!loggedIn) {
+      console.log('Session not valid. Logging in...');
+      await login();
+    } else {
+      console.log('Already logged in. Reusing session.');
+    }
+
     const users = await fetchUsers();
     const currentUser = await fetchCurrentUser();
 
@@ -152,10 +165,11 @@ async function main() {
     };
 
     fs.writeFileSync('users.json', JSON.stringify(result, null, 2));
-    console.log('✅ users.json written successfully!');
+    console.log('users.json written successfully!');
   } catch (err) {
-    console.error('❌ Error:', err);
+    console.error('Error:', err);
   }
 }
+
 
 main();
