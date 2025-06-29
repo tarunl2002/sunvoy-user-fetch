@@ -105,11 +105,11 @@ async function fetchCurrentUser() {
     const text = await res.text();
     try {
         const json = JSON.parse(text);
-        console.log('👤 Current user fetched successfully!');
+        console.log(' Current user fetched successfully!');
         return json;
     }
     catch {
-        console.error('❌ Response Body:', text);
+        console.error(' Response Body:', text);
         throw new Error(`Failed to fetch current user: ${res.status}`);
     }
 }
@@ -121,11 +121,11 @@ async function main() {
     try {
         const loggedIn = await isLoggedIn();
         if (!loggedIn) {
-            console.log('🔐 Session not valid. Logging in...');
+            console.log('Session not valid. Logging in...');
             await login();
         }
         else {
-            console.log('✅ Already logged in. Reusing session.');
+            console.log('Already logged in. Reusing session.');
         }
         const users = await fetchUsers();
         const currentUser = await fetchCurrentUser();
@@ -134,10 +134,10 @@ async function main() {
             currentUser,
         };
         fs.writeFileSync('users.json', JSON.stringify(result, null, 2));
-        console.log('✅ users.json written successfully!');
+        console.log('users.json written successfully!');
     }
     catch (err) {
-        console.error('❌ Error:', err);
+        console.error('Error:', err);
     }
 }
 main();
