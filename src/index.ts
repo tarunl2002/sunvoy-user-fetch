@@ -2,6 +2,7 @@ import fs from 'fs';
 import fetchBase from 'node-fetch';
 import fetchCookie from 'fetch-cookie';
 import { CookieJar } from 'tough-cookie';
+import crypto from 'crypto';
 
 const jar = new CookieJar();
 const fetch = fetchCookie(fetchBase, jar);
@@ -16,6 +17,30 @@ const CREDENTIALS = {
   password: 'test',
 };
 
+function createSignedRequest(data: Record<string, string>): {
+  fullPayload: string;
+  timestamp: string;
+} {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+
+  const payload: Record<string, string> = {
+  ...data,
+  timestamp,
+};
+
+
+  const sortedString = Object.keys(payload)
+    .sort()
+    .map((key) => `${key}=${encodeURIComponent(payload[key])}`)
+    .join('&');
+
+  const hmac = crypto.createHmac('sha1', 'mys3cr3t');
+  hmac.update(sortedString);
+  const checkcode = hmac.digest('hex').toUpperCase();
+
+  const fullPayload = `${sortedString}&checkcode=${checkcode}`;
+  return { fullPayload, timestamp };
+}
 
 function extractHiddenInputs(html: string): Record<string, string> {
   const tokens: Record<string, string> = {};
@@ -35,6 +60,7 @@ async function fetchNonce(): Promise<string> {
   if (!match) throw new Error('Nonce not found');
   return match[1];
 }
+
 
 async function login(): Promise<void> {
   const nonce = await fetchNonce();
@@ -70,30 +96,27 @@ async function fetchUsers(): Promise<any[]> {
 
   if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
 
-  const data = await res.json() as any[];
-
-
-  console.log(`📦 Users fetched: ${data.length}`);
+  const data = (await res.json()) as any[];
+  console.log(` Users fetched: ${data.length}`);
   return data;
 }
-
 
 async function fetchCurrentUser(): Promise<any> {
   const html = await fetch(TOKENS_PAGE).then(res => res.text());
   const tokens = extractHiddenInputs(html);
-  console.log('🧩 Extracted tokens:', tokens);
+  console.log('Extracted tokens:', tokens);
 
   if (!tokens.access_token || !tokens.userId || !tokens.operateId) {
     throw new Error('Missing one or more required tokens.');
   }
 
-  const body = new URLSearchParams({
+  const cookieHeader = await jar.getCookieString(SETTINGS_API);
+
+  const { fullPayload, timestamp } = createSignedRequest({
     access_token: tokens.access_token,
     userId: tokens.userId,
     operateId: tokens.operateId,
   });
-
-  const cookieHeader = await jar.getCookieString(SETTINGS_API);
 
   const res = await fetchBase(SETTINGS_API, {
     method: 'POST',
@@ -101,18 +124,21 @@ async function fetchCurrentUser(): Promise<any> {
       'Content-Type': 'application/x-www-form-urlencoded',
       Cookie: cookieHeader,
     },
-    body: body.toString(),
+    body: fullPayload,
   });
 
   const text = await res.text();
+
   try {
     const json = JSON.parse(text);
+    console.log('👤 Current user fetched successfully!');
     return json;
   } catch {
-    console.error(' Response Body:', text);
+    console.error('❌ Response Body:', text);
     throw new Error(`Failed to fetch current user: ${res.status}`);
   }
 }
+
 
 async function main() {
   try {
@@ -126,9 +152,9 @@ async function main() {
     };
 
     fs.writeFileSync('users.json', JSON.stringify(result, null, 2));
-    console.log('users.json written successfully!');
+    console.log('✅ users.json written successfully!');
   } catch (err) {
-    console.error('Error:', err);
+    console.error('❌ Error:', err);
   }
 }
 
